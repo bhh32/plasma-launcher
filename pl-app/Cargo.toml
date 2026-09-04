@@ -1,0 +1,18 @@
+[package]
+name = "pl-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "plasma-launcher"
+path = "src/main.rs"
+
+[dependencies]
+pl-ipc = { path = "../pl-ipc" }
+color-eyre = "0.6.5"
+freedesktop-desktop-entry = "0.8.2"
+nucleo-matcher = "0.3.1"
+tracing.workspace = true
+tracing-subscriber.workspace = true
