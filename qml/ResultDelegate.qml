@@ -16,29 +16,32 @@ Rectangle {
     signal hovered()
 
     implicitHeight: Theme.rowHeight
-
-    color: root.selected ? Theme.overlay : "transparent"
-    radius: Theme.radius / 2
+    color: root.selected ? Theme.surface1 : "transparent"
+    radius: Theme.radiusRow
+    border.width: 1
+    border.color: root.selected ? Theme.accent : "transparent"
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: Theme.padding
-        anchors.rightMargin: Theme.padding
-        spacing: Theme.padding
+        anchors.leftMargin: Theme.spaceMd
+        anchors.rightMargin: Theme.spaceMd
+        spacing: Theme.spaceMd
 
         IconImage {
-            implicitSize: 32
+            implicitSize: Theme.iconSize
             source: Quickshell.iconPath(root.iconName, "application-x-executable")
         }
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 0
+            spacing: Theme.spaceXs
 
             Text {
                 Layout.fillWidth: true
                 color: Theme.text
-                font.pixelSize: 14
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontName
+                font.weight: Font.Medium
                 elide: Text.ElideRight
                 text: root.name
             }
@@ -46,8 +49,9 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 visible: root.description !== ""
-                color: Theme.subtext
-                font.pixelSize: 11
+                color: Theme.subtext1
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontDescription
                 elide: Text.ElideRight
                 text: root.description
             }

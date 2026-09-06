@@ -2,28 +2,12 @@ pragma ComponentBehavior: Bound
 
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
 
 PanelWindow {
     id: root
-
-    // Placeholder
-    readonly property var entries: [
-        { name: "Firefox", description: "Web Browser", icon: "firefox", exec: ["firefox"] },
-        { name: "Konsole", description: "Terminal", icon: "utilities-terminal", exec: ["terminal"] },
-        { name: "Dolphin", description: "File Manager", icon: "system-file-manager", exec: ["dolphin"] },
-        { name: "System Settings", description: "Configure KDE Plasma", icon: "systemsettings", exec: ["systemsettings"] },
-        { name: "Spectacle", description: "Screenshot Capture", icon: "spectacle", exec: ["spectacle"] }
-    ]
-
-    readonly property string query: input.text.trim().toLowerCase()
-    readonly property var results: {
-        if (root.query === "") return root.entries;
-        return root.entries.filter(entry =>
-            entry.name.toLowerCase().includes(root.query)
-            || entry.description.toLowerCase().includes(root.query));
-    }
 
     function open(): void {
         input.clear();
@@ -36,7 +20,7 @@ PanelWindow {
 
     function activate(index: int): void {
         const result = Service.results[index];
-        if(result === undefined) return;
+        if (result === undefined) return;
 
         Service.activate(result.id);
     }
@@ -45,14 +29,15 @@ PanelWindow {
         const result = Service.results[index];
         if (result === undefined) return;
 
-        Service.complete(result.id)
+        Service.complete(result.id);
     }
 
     visible: false
     color: "transparent"
     exclusionMode: ExclusionMode.Normal
     implicitWidth: Theme.cardWidth
-    implicitHeight: layout.implicitHeight + Theme.padding * 2
+    implicitHeight: card.maximumHeight
+    mask: Region { item: card }
     anchors.top: true
     margins.top: Theme.topMargin
 
@@ -62,83 +47,160 @@ PanelWindow {
 
     onVisibleChanged: if (visible) input.forceActiveFocus()
 
-    MouseArea {
-        anchors.fill: parent
-        onClicked: root.close()
+    Connections {
+        target: Service
+
+        function onCloseRequested(): void {
+            root.close();
+        }
+
+        function onFillRequested(text: string): void {
+            input.text = text;
+        }
     }
 
     Rectangle {
         id: card
 
-        anchors.fill: parent
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round(parent.height * 0.2)
-        width: Theme.cardWidth
-        height: layout.implicitHeight + Theme.padding * 2
-        color: Theme.surface
-        radius: Theme.radius
+        readonly property int chrome: Theme.spaceMd * 2 + well.implicitHeight
+        readonly property int maximumHeight: card.chrome + results.headerHeight + Theme.visibleRows * Theme.rowHeight
+
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+
+        height: card.chrome + (list.count > 0
+            ? results.headerHeight + Math.min(list.count, Theme.visibleRows) * Theme.rowHeight
+            : 0)
+
+        clip: true
+        color: Theme.base
+        radius: Theme.radiusCard
+        border.width: 1
+        border.color: Theme.surface1
+
+        Behavior on height {
+            NumberAnimation {
+                duration: 110
+                easing.type: Easing.OutCubic
+            }
+        }
+        // The one motion moment: it answers the keypress that opened this
+        opacity: root.visible ? 1 : 0
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 120
+                easing.type: Easing.OutCubic
+            }
+        }
 
         ColumnLayout {
-            id: layout
-
             anchors.fill: parent
-            anchors.margins: Theme.padding
-            spacing: Theme.padding
+            anchors.margins: Theme.spaceMd
+            spacing: 0
 
-            TextInput {
-                id: input
+            Rectangle {
+                id: well
 
                 Layout.fillWidth: true
-                color: Theme.text
-                font.pixelSize: 18
-                selectionColor: Theme.accent
-                selectedTextColor: Theme.base
-                focus: true
+                implicitHeight: field.implicitHeight + Theme.spaceSm * 2
+                color: Theme.mantle
+                radius: Theme.radiusField
+                border.width: 1
+                border.color: Theme.surface0
 
-                onAccepted: root.activate(list.currentIndex)
+                RowLayout {
+                    id: field
 
-                onTextChanged: Service.search(text)
-                Keys.onTabPressed: root.complete(list.currentIndex)
-                Keys.onEscapePressed: root.close()
-                Keys.onDownPressed: list.incrementCurrentIndex()
-                Keys.onUpPressed: list.decrementCurrentIndex()
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: Theme.spaceMd
+                    anchors.rightMargin: Theme.spaceMd
+                    spacing: Theme.spaceMd
 
-                Text {
-                    anchors.fill: parent
-                    visible: input.text === ""
+                    IconImage {
+                        implicitSize: 16
+                        source: Quickshell.iconPath("system-search", "edit-find")
+                    }
 
-                    color: Theme.subtext
-                    font: input.font
-                    text: "Search applications"
+                    TextInput {
+                        id: input
+
+                        Layout.fillWidth: true
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontInput
+                        selectionColor: Theme.surface1
+                        selectedTextColor: Theme.text
+                        focus: true
+
+                        onAccepted: root.activate(list.currentIndex)
+                        onTextChanged: Service.search(text)
+
+                        Keys.onTabPressed: root.complete(list.currentIndex)
+                        Keys.onEscapePressed: root.close()
+                        Keys.onDownPressed: list.incrementCurrentIndex()
+                        Keys.onUpPressed: list.decrementCurrentIndex()
+
+                        Text {
+                            anchors.fill: parent
+                            visible: input.text === ""
+
+                            color: Theme.subtext0
+                            font: input.font
+                            text: ""
+                        }
+                    }
                 }
             }
 
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 1
-                color: Theme.overlay
-                visible: list.count > 0
-            }
+            Item {
+                id: results
 
-            ListView {
-                id: list
+                readonly property int headerHeight: Theme.spaceSm * 2 + 1
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(count, Theme.visibleRows) * Theme.rowHeight
+                Layout.fillHeight: true
+
                 clip: true
-                model: Service.results
-                onModelChanged: currentIndex = 0
-                delegate: ResultDelegate {
-                    required property var modelData
-                    required property int index
 
-                    width: list.width
-                    name: modelData.name
-                    description: modelData.description
-                    iconName: modelData.icon && modelData.icon.Name ? modelData.icon.Name : ""
-                    selected: index === list.currentIndex
-                    onClicked: root.activate(index)
-                    onHovered: list.currentIndex = index
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.spaceSm
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 1
+                    color: Theme.surface0
+                }
+
+                ListView {
+                    id: list
+
+                    anchors.top: parent.top
+                    anchors.topMargin: results.headerHeight
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+
+                    clip: true
+                    model: Service.results
+                    onModelChanged: currentIndex = 0
+
+                    delegate: ResultDelegate {
+                        required property var modelData
+                        required property int index
+
+                        width: list.width
+                        name: modelData.name
+                        description: modelData.description
+                        iconName: modelData.icon && modelData.icon.Name ? modelData.icon.Name : ""
+                        selected: index === list.currentIndex
+
+                        onClicked: root.activate(index)
+                        onHovered: list.currentIndex = index
+                    }
                 }
             }
         }
