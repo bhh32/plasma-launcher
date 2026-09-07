@@ -33,21 +33,26 @@ impl Registry {
         let query = query.trim();
 
         // An isolating plugin takes the list to itself
-        let participating: Vec<usize> = match self
+        let isolating = self
             .plugins
             .iter()
-            .position(|plugin| plugin.isolates(query))
-        {
+            .position(|plugin| plugin.isolates(query));
+        let participating: Vec<usize> = match isolating {
             Some(idx) => vec![idx],
             None => (0..self.plugins.len())
                 .filter(|&idx| self.plugins[idx].accepts(query))
                 .collect(),
         };
+        let limit = if isolating.is_some() {
+            usize::MAX
+        } else {
+            MAX_RESULTS
+        };
         let mut results = Vec::new();
 
         for idx in participating {
             for result in self.plugins[idx].search(query, &self.ranking) {
-                if results.len() == MAX_RESULTS {
+                if results.len() == limit {
                     break;
                 }
 

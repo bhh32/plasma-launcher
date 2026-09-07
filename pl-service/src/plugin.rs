@@ -18,4 +18,15 @@ pub trait Plugin {
     fn key(&self, _id: Indice) -> Option<String> {
         None
     }
+
+    fn usage(&self) -> Vec<Usage> {
+        Vec::new()
+    }
+}
+
+pub struct Usage {
+    // Empty for a plugin with no prefix
+    pub prefix: String,
+    pub example: String,
+    pub description: String,
 }

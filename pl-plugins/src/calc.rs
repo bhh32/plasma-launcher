@@ -3,7 +3,7 @@ pub mod parser;
 pub mod token;
 
 use pl_ipc::{IconSource, Indice, PluginResponse, PluginSearchResult};
-use pl_service::{Plugin, Ranking};
+use pl_service::{Plugin, Ranking, Usage};
 
 use crate::calc::{parser::evaluate, token::tokenize};
 
@@ -74,6 +74,14 @@ impl Plugin for Calculator {
             Some(value) => vec![PluginResponse::Fill(format!("= {value}"))],
             None => Vec::new(),
         }
+    }
+
+    fn usage(&self) -> Vec<Usage> {
+        vec![Usage {
+            prefix: "=".into(),
+            example: "= 15%of240".into(),
+            description: "Calculator".into(),
+        }]
     }
 }
 

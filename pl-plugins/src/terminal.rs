@@ -2,7 +2,7 @@ use std::env;
 
 use crate::spawn::detached;
 use pl_ipc::{IconSource, Indice, PluginResponse, PluginSearchResult};
-use pl_service::{Plugin, Ranking};
+use pl_service::{Plugin, Ranking, Usage};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,6 +97,14 @@ impl Plugin for Terminal {
         detached(&self.command, &["-e", "sh", "-c", cmd]);
 
         vec![PluginResponse::Close]
+    }
+
+    fn usage(&self) -> Vec<Usage> {
+        vec![Usage {
+            prefix: String::new(),
+            example: "firefox".into(),
+            description: "Search applications. Empty shows most used".into(),
+        }]
     }
 }
 

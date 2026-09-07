@@ -1,6 +1,6 @@
 use crate::spawn::detached;
 use pl_ipc::{IconSource, Indice, PluginResponse, PluginSearchResult};
-use pl_service::{Plugin, Ranking};
+use pl_service::{Plugin, Ranking, Usage};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -107,6 +107,33 @@ impl Plugin for Web {
 
         vec![PluginResponse::Close]
     }
+
+    fn usage(&self) -> Vec<Usage> {
+        self.settings
+            .keywords
+            .iter()
+            .map(|(prefix, template)| {
+                let host = host_of(template);
+
+                // A slot after ? is a search; a slot in the path is a path
+                let searches = template
+                    .split("{}")
+                    .next()
+                    .is_some_and(|head| head.contains('?'));
+                let example = match (&host, searches) {
+                    (None, _) => format!("{prefix} example.com"),
+                    (Some(_), true) => format!("{prefix} <terms>"),
+                    (Some(_), false) => format!("{prefix} <path>"),
+                };
+
+                Usage {
+                    prefix: prefix.clone(),
+                    example,
+                    description: host.unwrap_or_else(|| "Open a URL".to_owned()),
+                }
+            })
+            .collect()
+    }
 }
 
 // Percent encoding for a query string. Everything outside the unreserved set
@@ -126,6 +153,13 @@ fn encode(terms: &str) -> String {
     }
 
     encoded
+}
+
+fn host_of(template: &str) -> Option<String> {
+    let rest = template.split_once("://")?.1;
+    let host = rest.split('/').next()?;
+
+    (!host.is_empty() && !host.contains('{')).then(|| host.to_owned())
 }
 
 #[cfg(test)]
@@ -180,5 +214,34 @@ mod tests {
 
         assert!(web.isolates("rs serde"));
         assert!(!web.isolates("serde"));
+    }
+
+    #[test]
+    fn slashes_survive_encoding() {
+        assert_eq!(encode("bhh32/wifi"), "bhh32/wifi");
+        assert_eq!(encode("a b/c"), "a+b/c");
+    }
+
+    #[test]
+    fn usage_distinguishes_searches_from_paths() {
+        let usage = web().usage();
+        let google = usage
+            .iter()
+            .find(|url| url.prefix == "g")
+            .expect("g exists");
+        assert_eq!(google.example, "g <terms>");
+        assert_eq!(google.description, "google.com");
+
+        let github = usage
+            .iter()
+            .find(|url| url.prefix == "gh")
+            .expect("gh exists");
+        assert_eq!(github.example, "gh <path>");
+
+        let raw = usage
+            .iter()
+            .find(|url| url.prefix == "http")
+            .expect("http exists");
+        assert_eq!(raw.description, "Open a URL");
     }
 }

@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use pl_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
-use pl_plugins::{Calculator, DesktopEntries, Settings, Terminal, Web};
+use pl_plugins::{Calculator, DesktopEntries, Help, Settings, Terminal, Topic, Web};
 use pl_service::{Plugin, Registry};
 use std::io::{BufRead, Write, stderr, stdin, stdout};
 use tracing::{debug, warn};
@@ -14,11 +14,23 @@ fn main() -> Result<()> {
 
     let settings = Settings::load();
 
+    let calculator = Calculator::default();
+    let web = Web::new(settings.web);
+    let terminal = Terminal::new(settings.terminal);
+    let desktop = DesktopEntries::load();
+    let help = Help::new(vec![
+        Topic::of(&calculator),
+        Topic::of(&web),
+        Topic::of(&terminal),
+        Topic::of(&desktop),
+    ]);
+
     let plugins: Vec<Box<dyn Plugin>> = vec![
-        Box::new(Calculator::default()),
-        Box::new(Web::new(settings.web)),
-        Box::new(Terminal::new(settings.terminal)),
-        Box::new(DesktopEntries::load()),
+        Box::new(calculator),
+        Box::new(web),
+        Box::new(terminal),
+        Box::new(help),
+        Box::new(desktop),
     ];
 
     let mut registry = Registry::new(plugins);
