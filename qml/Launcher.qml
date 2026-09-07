@@ -11,6 +11,7 @@ PanelWindow {
 
     function open(): void {
         input.clear();
+        Service.search("");
         root.visible = true;
     }
 

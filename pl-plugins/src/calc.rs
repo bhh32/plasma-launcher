@@ -3,7 +3,7 @@ pub mod parser;
 pub mod token;
 
 use pl_ipc::{IconSource, Indice, PluginResponse, PluginSearchResult};
-use pl_service::Plugin;
+use pl_service::{Plugin, Ranking};
 
 use crate::calc::{parser::evaluate, token::tokenize};
 
@@ -27,7 +27,7 @@ impl Plugin for Calculator {
         query.trim_start().starts_with('=')
     }
 
-    fn search(&mut self, query: &str) -> Vec<PluginSearchResult> {
+    fn search(&mut self, query: &str, _ranking: &Ranking) -> Vec<PluginSearchResult> {
         self.outcome = None;
 
         let query = query.trim();
@@ -92,20 +92,20 @@ fn format_value(value: f64) -> String {
 mod tests {
     use super::Calculator;
     use pl_ipc::PluginResponse;
-    use pl_service::Plugin;
+    use pl_service::{Plugin, Ranking};
 
     #[test]
     fn a_lone_number_is_not_a_calc() {
         let mut calc = Calculator::default();
 
-        assert!(calc.search("5").is_empty());
-        assert_eq!(calc.search("= 5").len(), 1);
+        assert!(calc.search("5", &Ranking::default()).is_empty());
+        assert_eq!(calc.search("= 5", &Ranking::default()).len(), 1);
     }
 
     #[test]
     fn the_answer_is_the_result_name() {
         let mut calc = Calculator::default();
-        let results = calc.search("15%of240");
+        let results = calc.search("15%of240", &Ranking::default());
 
         assert_eq!(results[0].name, "36");
         assert_eq!(results[0].description, "15%of240");
@@ -114,20 +114,20 @@ mod tests {
     #[test]
     fn floating_point_noise_is_rounded_away() {
         let mut calc = Calculator::default();
-        assert_eq!(calc.search("0.1+0.2")[0].name, "0.3");
+        assert_eq!(calc.search("0.1+0.2", &Ranking::default())[0].name, "0.3");
     }
     #[test]
     fn nonsense_produces_no_result() {
         let mut calc = Calculator::default();
 
-        assert!(calc.search("2+").is_empty());
-        assert!(calc.search("1/0").is_empty());
+        assert!(calc.search("2+", &Ranking::default()).is_empty());
+        assert!(calc.search("1/0", &Ranking::default()).is_empty());
     }
 
     #[test]
     fn activating_fills_without_close() {
         let mut calc = Calculator::default();
-        calc.search("36*3");
+        calc.search("36*3", &Ranking::default());
 
         assert_eq!(calc.activate(0), vec![PluginResponse::Fill("= 108".into())]);
     }

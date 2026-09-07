@@ -1,11 +1,9 @@
-mod index;
-mod search;
-
-use crate::search::Searcher;
 use color_eyre::Result;
-use pl_ipc::{decode_line, encode_line, Error as IpcError, GpuPreference, Request, Response};
-use std::io::{stderr, stdin, stdout, BufRead, Write};
-use tracing::{debug, info, warn};
+use pl_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
+use pl_plugins::{Calculator, DesktopEntries, Settings, Terminal, Web};
+use pl_service::{Plugin, Registry};
+use std::io::{BufRead, Write, stderr, stdin, stdout};
+use tracing::{debug, warn};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -14,10 +12,16 @@ fn main() -> Result<()> {
     // stream is corrupted for the frontend
     tracing_subscriber::fmt().with_writer(stderr).init();
 
-    let entries = index::load();
-    info!(count = entries.len(), "indexed desktop entries");
+    let settings = Settings::load();
 
-    let mut searcher = Searcher::new(entries);
+    let plugins: Vec<Box<dyn Plugin>> = vec![
+        Box::new(Calculator::default()),
+        Box::new(Web::new(settings.web)),
+        Box::new(Terminal::new(settings.terminal)),
+        Box::new(DesktopEntries::load()),
+    ];
+
+    let mut registry = Registry::new(plugins);
     let mut stdout = stdout().lock();
 
     for line in stdin().lock().lines() {
@@ -33,35 +37,18 @@ fn main() -> Result<()> {
 
         match request {
             Request::Search(query) => {
-                let results = searcher.search(&query);
+                let results = registry.search(&query);
                 respond(&mut stdout, &Response::Update(results))?;
             }
             Request::Activate(id) => {
-                let Some(entry) = searcher.resolve(id) else {
-                    warn!(id, "activate for an id outside the last result set");
-                    continue;
-                };
-                let gpu_preference = if entry.prefers_non_default_gpu {
-                    GpuPreference::NonDefault
-                } else {
-                    GpuPreference::Default
-                };
-                let path = entry.path.clone();
-
-                respond(
-                    &mut stdout,
-                    &Response::DesktopEntry {
-                        path,
-                        gpu_preference,
-                    },
-                )?;
-                respond(&mut stdout, &Response::Close)?;
+                for response in registry.activate(id) {
+                    forward(&mut stdout, response)?;
+                }
             }
             Request::Complete(id) => {
-                let Some(entry) = searcher.resolve(id) else {
-                    continue;
-                };
-                respond(&mut stdout, &Response::Fill(entry.name.clone()))?;
+                if let Some(text) = registry.complete(id) {
+                    respond(&mut stdout, &Response::Fill(text))?;
+                }
             }
             Request::Exit => break,
             Request::Interrupt => {}
@@ -72,6 +59,29 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn forward<W: Write>(out: &mut W, response: PluginResponse) -> Result<()> {
+    // Append, Clear, and Finished belong to the streaming search protocol an
+    // out-of-process plugin speaks. Activation never produces them
+    let response = match response {
+        PluginResponse::Close => Response::Close,
+        PluginResponse::Fill(text) => Response::Fill(text),
+        PluginResponse::DesktopEntry {
+            path,
+            gpu_preference,
+        } => Response::DesktopEntry {
+            path,
+            gpu_preference,
+        },
+        PluginResponse::Context { id, options } => Response::Context { id, options },
+        other => {
+            debug!(?other, "plugin response not valid for activation");
+            return Ok(());
+        }
+    };
+
+    respond(out, &response)
 }
 
 fn respond<W: Write>(out: &mut W, response: &Response) -> Result<()> {

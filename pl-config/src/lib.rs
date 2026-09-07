@@ -11,6 +11,60 @@ use toml::de;
 
 use crate::desktop::Scheme;
 
+const TEMPLATE: &str = r##"# plasma-launcher configuration
+#
+# Everything within this configuration file is optional, and if it's missing
+# it'll just fall back to the launcher/DE defaults. Below are the accepted
+# type of each key.
+
+# [appearance]
+# card_width = 600      # integer, pixels
+# top_margin = 16       # integer, pixels below the panel
+# row_height = 56       # integer, pixels per result
+# visible_rows = 8      # integer, rows before the list scrolls
+# icon_size = 32        # integer, pixels
+
+# [appearance.radius]
+# card = 16             # integer, pixels
+# field = 10
+# row = 8
+
+# [appearance.font]
+# family = ""           # string, empty means the system font
+# input = 19            # integer, pixel size
+# name = 15
+# description = 12
+
+# Colors are `#rrggbb`. While these are absent from the launcher follows
+# your DE color scheme; setting one pins it and stops following the DE color
+# scheme.
+# [appearance.colors]
+# base = "#303446"      # card background
+# mantle = "#292c3c"    # search field
+# surface0 = "#414559"  # borders and the divider
+# surface1 = "#51576d"  # selected row
+# text = "#c6d0f5"      # result name
+# subtext0 = "#a5adce"  # placeholder text
+# subtext1 = "#b5bf32"  # result description
+# accent = "#babbf1"    # selected row border
+
+# Web keywords map a prefix to a URL template, where {} is replaced by the
+# encoded search terms. Uncommenting this section replaces the built-in set
+# rather than adding to it, so list every keyword you want.
+# [plugins.web.keywords]
+# ddg = "https://duckduckgo.com/?q={}"
+# g = "https://google.com/search?q={}"
+# cb = "https://codeberg.org/{}"
+# gh = "https://github.com/{}"
+# rs = "https://docs.rs/{}"
+# crate = "https://crates.io/crate/{}"
+# w = "https://en.wikipedia.org/w/index.php?search={}"
+
+#[plugins.terminal]
+# prefix = "t"           # string, the word that triggers this plugin
+# command = ""           # string, empty means $TERMINAL then konsole
+"##;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("could not read {path}: {source}")]
@@ -19,6 +73,8 @@ pub enum Error {
     Parse { path: PathBuf, source: de::Error },
     #[error("could not encode config as json: {0}")]
     Encode(#[from] serde_json::Error),
+    #[error("could not write {path}: {source}")]
+    Write { path: PathBuf, source: io::Error },
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -176,6 +232,22 @@ impl Config {
             config: Self::path(),
             desktop: scheme.map(|scheme| scheme.source),
         };
+    }
+
+    pub fn write_default_if_missing() -> Result<(), Error> {
+        let path = Self::path();
+        if path.exists() {
+            return Ok(());
+        }
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|source| Error::Write {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
+
+        fs::write(&path, TEMPLATE).map_err(|source| Error::Write { path, source })
     }
 }
 

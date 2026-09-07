@@ -1,3 +1,5 @@
+use crate::Ranking;
+
 use super::Plugin;
 use pl_ipc::{Indice, PluginResponse, SearchResult};
 use tracing::debug;
@@ -13,6 +15,7 @@ struct Selection {
 pub struct Registry {
     plugins: Vec<Box<dyn Plugin>>,
     selections: Vec<Selection>,
+    ranking: Ranking,
 }
 
 impl Registry {
@@ -20,6 +23,7 @@ impl Registry {
         Self {
             plugins,
             selections: Vec::new(),
+            ranking: Ranking::load(),
         }
     }
 
@@ -27,9 +31,6 @@ impl Registry {
         self.selections.clear();
 
         let query = query.trim();
-        if query.is_empty() {
-            return Vec::new();
-        }
 
         // An isolating plugin takes the list to itself
         let participating: Vec<usize> = match self
@@ -45,7 +46,7 @@ impl Registry {
         let mut results = Vec::new();
 
         for idx in participating {
-            for result in self.plugins[idx].search(query) {
+            for result in self.plugins[idx].search(query, &self.ranking) {
                 if results.len() == MAX_RESULTS {
                     break;
                 }
@@ -73,6 +74,10 @@ impl Registry {
             debug!(id, "activate for an id outside the last result set");
             return Vec::new();
         };
+        if let Some(key) = self.plugins[sel.plugin].key(sel.local) {
+            self.ranking.record(&key);
+        }
+
         self.plugins[sel.plugin].activate(sel.local)
     }
 
@@ -84,6 +89,8 @@ impl Registry {
 
 #[cfg(test)]
 mod tests {
+    use crate::Ranking;
+
     use super::{super::Plugin, Registry};
     use pl_ipc::{Indice, PluginResponse, PluginSearchResult};
 
@@ -106,7 +113,7 @@ mod tests {
             self.isolating && query.starts_with('=')
         }
 
-        fn search(&mut self, _query: &str) -> Vec<PluginSearchResult> {
+        fn search(&mut self, _query: &str, _ranking: &Ranking) -> Vec<PluginSearchResult> {
             (0..self.count)
                 .map(|num| PluginSearchResult {
                     id: num as Indice,

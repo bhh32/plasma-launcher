@@ -6,7 +6,8 @@ use nucleo_matcher::{
     pattern::{CaseMatching, Normalization, Pattern},
 };
 use pl_ipc::{GpuPreference, IconSource, Indice, PluginResponse, PluginSearchResult};
-use pl_service::Plugin;
+use pl_service::{Plugin, Ranking};
+use std::cmp::Ordering;
 use tracing::info;
 
 const MAX_RESULTS: usize = 8;
@@ -50,7 +51,11 @@ impl Plugin for DesktopEntries {
         true
     }
 
-    fn search(&mut self, query: &str) -> Vec<PluginSearchResult> {
+    fn key(&self, id: Indice) -> Option<String> {
+        Some(self.resolve(id)?.path.to_string_lossy().into_owned())
+    }
+
+    fn search(&mut self, query: &str, ranking: &Ranking) -> Vec<PluginSearchResult> {
         // Destructured so the scoring closure can hold the matcher and buffer
         // mutably while iterating the entries immutably
         let Self {
@@ -62,25 +67,38 @@ impl Plugin for DesktopEntries {
 
         selections.clear();
         let query = query.trim();
-        if query.is_empty() {
-            return Vec::new();
-        }
+        let mut scored: Vec<(f64, usize)> = if query.is_empty() {
+            // An empty query is a request for what is used most
+            entries
+                .iter()
+                .enumerate()
+                .map(|(idx, entry)| (ranking.score(&entry.path.to_string_lossy()), idx))
+                .filter(|(score, _)| *score > 0.0)
+                .collect()
+        } else {
+            let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
 
-        let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
-        let mut scored: Vec<(u32, usize)> = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, entry)| {
-                let haystack = Utf32Str::new(&entry.haystack, haystack_buffer);
-                pattern.score(haystack, matcher).map(|score| (score, idx))
-            })
-            .collect();
+            entries
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, entry)| {
+                    let haystack = Utf32Str::new(&entry.haystack, haystack_buffer);
+                    let score = pattern.score(haystack, matcher)?;
+
+                    Some((
+                        f64::from(score) + ranking.bonus(&entry.path.to_string_lossy()),
+                        idx,
+                    ))
+                })
+                .collect()
+        };
 
         // Name breaks score ties
         scored.sort_by(|left, right| {
             right
                 .0
-                .cmp(&left.0)
+                .partial_cmp(&left.0)
+                .unwrap_or(Ordering::Equal)
                 .then_with(|| entries[left.1].name.cmp(&entries[right.1].name))
         });
         scored.truncate(MAX_RESULTS);
@@ -135,11 +153,11 @@ mod tests {
     use super::{DesktopEntries, MAX_RESULTS};
     use crate::desktop_entries::index::Entry;
     use pl_ipc::PluginResponse;
-    use pl_service::Plugin;
+    use pl_service::{Plugin, Ranking};
 
     fn entry(name: &str, description: &str) -> Entry {
         Entry {
-            path: format!("/usr/share/applicatons/{name}.desktop").into(),
+            path: format!("/usr/share/applications/{name}.desktop").into(),
             name: name.into(),
             description: description.into(),
             icon: Some(name.to_lowercase()),
@@ -159,7 +177,7 @@ mod tests {
     #[test]
     fn abbreviations_match_subsequences() {
         let mut plugin = plugin();
-        let results = plugin.search("fx");
+        let results = plugin.search("fx", &Ranking::default());
 
         assert_eq!(
             results.first().map(|result| result.name.as_str()),
@@ -170,7 +188,7 @@ mod tests {
     #[test]
     fn the_description_is_searchable() {
         let mut plugin = plugin();
-        let results = plugin.search("browser");
+        let results = plugin.search("browser", &Ranking::default());
 
         assert_eq!(
             results.first().map(|result| result.name.as_str()),
@@ -179,15 +197,31 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_query_returns_nothing() {
+    fn an_empty_query_returns_nothing_without_history() {
         let mut plugin = plugin();
-        assert!(plugin.search(" ").is_empty());
+        assert!(plugin.search(" ", &Ranking::default()).is_empty());
+    }
+
+    #[test]
+    fn an_empty_query_returns_the_most_used() {
+        let mut plugin = plugin();
+        let mut ranking = Ranking::default();
+
+        // Keyed off the fixture so the two cannot drift apart
+        ranking.record(&entry("Konsole", "Terminal").path.to_string_lossy());
+
+        let results = plugin.search("", &ranking);
+
+        assert_eq!(
+            results.first().map(|result| result.name.as_str()),
+            Some("Konsole")
+        );
     }
 
     #[test]
     fn ids_are_positional_and_resolve_to_entries() {
         let mut plugin = plugin();
-        let results = plugin.search("o");
+        let results = plugin.search("o", &Ranking::default());
 
         for result in &results {
             let entry = plugin.resolve(result.id).expect("id came from this search");
@@ -198,17 +232,17 @@ mod tests {
     #[test]
     fn ids_from_a_stale_search_do_not_resolve() {
         let mut plugin = plugin();
-        let results = plugin.search("konsole");
+        let results = plugin.search("konsole", &Ranking::default());
         assert_eq!(results.len(), 1);
 
-        plugin.search("nothing matches this");
+        plugin.search("nothing matches this", &Ranking::default());
         assert!(plugin.resolve(0).is_none());
     }
 
     #[test]
     fn activation_launches_and_closes() {
         let mut plugin = plugin();
-        plugin.search("konsole");
+        plugin.search("konsole", &Ranking::default());
 
         let responses = plugin.activate(0);
         assert_eq!(responses.len(), 2);
@@ -222,6 +256,6 @@ mod tests {
             .collect();
         let mut plugin = DesktopEntries::with_entries(entries);
 
-        assert_eq!(plugin.search("app").len(), MAX_RESULTS);
+        assert_eq!(plugin.search("app", &Ranking::default()).len(), MAX_RESULTS);
     }
 }
