@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["pl-app", "pl-config", "pl-ipc", "pl-plugins", "pl-service"]
+members = ["fh-app", "fh-config", "fh-ipc", "fh-manifest", "fh-paths", "fh-plugin", "fh-plugins", "fh-service"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,13 +9,17 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-pl-config = { path = "./pl-config" }
-pl-ipc = { path = "./pl-ipc" }
-pl-plugins = { path = "./pl-plugins" }
-pl-service = { path = "./pl-service" }
+fh-config = { path = "./fh-config" }
+fh-ipc = { path = "./fh-ipc" }
+fh-manifest = { path = "./fh-manifest" }
+fh-paths = { path = "./fh-paths" }
+fn-plugin = { path = "./fh-plugin" }
+fh-plugins = { path = "./fh-plugins" }
+fh-service = { path = "./fh-service" }
 
 color-eyre = "0.6"
 freedesktop-desktop-entry = "0.8"
+ignore = "0.4"
 nucleo-matcher = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

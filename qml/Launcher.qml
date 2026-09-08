@@ -44,7 +44,7 @@ PanelWindow {
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-    WlrLayershell.namespace: "plasma-launcher"
+    WlrLayershell.namespace: "foothold"
 
     onVisibleChanged: if (visible) input.forceActiveFocus()
 
@@ -139,7 +139,24 @@ PanelWindow {
 
                         onAccepted: root.activate(list.currentIndex)
                         onTextChanged: Service.search(text)
+                        onActiveFocusChanged: if (root.visible && !activeFocus) root.close()
 
+                        Keys.onPressed: event => {
+                            if (!(event.modifiers & Qt.ControlModifier)) return;
+                            if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                                root.activate(event.key - Qt.Key_1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_0) {
+                                root.active(9);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_P || event.key === Qt.Key_K) {
+                                list.decrementCurrentIndex();
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_N || event.key === Qt.Key_J) {
+                                list.incrementCurrentIndex();
+                                event.accepted = true;
+                            }
+                        }
                         Keys.onTabPressed: root.complete(list.currentIndex)
                         Keys.onEscapePressed: root.close()
                         Keys.onDownPressed: list.incrementCurrentIndex()
@@ -194,8 +211,9 @@ PanelWindow {
                         required property int index
 
                         width: list.width
-                        name: modelData.name
-                        description: modelData.description
+                        name: modelData.window ? modelData.description : modelData.name
+                        description: modelData.window ? modelData.name : modelData.description
+                        shortcut: index < 10 ? `Ctrl + ${(index + 1) % 10}` : ""
                         iconName: modelData.icon && modelData.icon.Name ? modelData.icon.Name : ""
                         selected: index === list.currentIndex
 

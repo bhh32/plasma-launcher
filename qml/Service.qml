@@ -7,7 +7,7 @@ Singleton {
     id: root
 
     // Dev path
-    readonly property string binary: "/home/bryan/Projects/rust/personal/plasma-launcher/target/debug/plasma-launcher"
+    readonly property string binary: "foothold"
     property var results: []
 
     signal closeRequested()

@@ -8,6 +8,7 @@ Rectangle {
 
     required property string name
     required property string description
+    property string shortcut: ""
     required property string iconName
 
     property bool selected: false
@@ -55,6 +56,15 @@ Rectangle {
                 elide: Text.ElideRight
                 text: root.description
             }
+        }
+
+        Text {
+            visible: root.shortcut !== ""
+
+            color: Theme.subtext0
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontDescription
+            text: root.shortcut
         }
     }
 

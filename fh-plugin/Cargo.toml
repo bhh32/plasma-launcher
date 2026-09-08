@@ -1,0 +1,10 @@
+[package]
+name = "fh-plugin"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fh-ipc.workspace = true
+tracing-subscriber.workspace = true

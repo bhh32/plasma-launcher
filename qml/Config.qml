@@ -6,7 +6,7 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string binary: "/home/bryan/Projects/rust/personal/plasma-launcher/target/debug/plasma-launcher-config"
+    readonly property string binary: "foothold-config"
 
     property var appearance: ({})
     property var paths: ({})

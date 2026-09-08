@@ -1,0 +1,20 @@
+[package]
+name = "fh-app"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "foothold"
+path = "src/main.rs"
+
+[dependencies]
+fh-ipc.workspace = true
+fh-manifest.workspace = true
+fh-plugins.workspace = true
+fh-service.workspace = true
+
+color-eyre.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
