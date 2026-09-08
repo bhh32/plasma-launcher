@@ -17,7 +17,7 @@ pub trait Plugin {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Usage {
     // Empty for a plugin with no prefix
     pub prefix: String,

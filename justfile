@@ -60,5 +60,7 @@ restart:
     setsid qs -c foothold > /dev/null 2>&1 &
     @echo "restarted"
 
+reset: restart
+
 log:
     journalctl --user -f -o cat | grep -i 'qs\['

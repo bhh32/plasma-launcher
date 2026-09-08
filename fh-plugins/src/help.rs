@@ -7,6 +7,10 @@ pub struct Topic {
 }
 
 impl Topic {
+    pub fn new(plugin: String, entries: Vec<Usage>) -> Self {
+        Self { plugin, entries }
+    }
+
     pub fn of(plugin: &impl Plugin) -> Self {
         Self {
             plugin: plugin.name().to_owned(),
@@ -28,18 +32,11 @@ impl Help {
             0,
             Topic {
                 plugin: "help".into(),
-                entries: vec![
-                    Usage {
-                        prefix: "?".into(),
-                        example: "? plugin".into(),
-                        description: "List available plugins".into(),
-                    },
-                    Usage {
-                        prefix: "?".into(),
-                        example: "? web".into(),
-                        description: "Help for one plugin".into(),
-                    },
-                ],
+                entries: vec![Usage {
+                    prefix: "?".into(),
+                    example: "? web".into(),
+                    description: "Help for one plugin".into(),
+                }],
             },
         );
 
@@ -78,7 +75,7 @@ impl Help {
     fn entries(&self, wanted: &str) -> Vec<(String, String, String)> {
         self.topics
             .iter()
-            .filter(|topic| wanted.is_empty() || topic.plugin.to_lowercase().starts_with(wanted))
+            .filter(|topic| topic.plugin.to_lowercase().starts_with(wanted))
             .flat_map(|topic| topic.entries.iter())
             .map(|usage| {
                 let fill = if usage.prefix.is_empty() {
@@ -118,11 +115,10 @@ impl Plugin for Help {
         };
         let wanted = rest.trim().to_lowercase();
 
-        // "plugin" is a word rather than a plugin name, so it is checked
-        // before the name filter
-        let rows = match wanted.as_str() {
-            "plugin" | "plugins" => self.plugins(),
-            other => self.entries(other),
+        let rows = if wanted.is_empty() {
+            self.plugins()
+        } else {
+            self.entries(&wanted)
         };
 
         rows.into_iter()
@@ -179,19 +175,11 @@ mod tests {
     }
 
     #[test]
-    fn a_bare_question_mark_lists_every_entry() {
+    fn default_is_plugins() {
         let mut help = help();
         let results = help.search("?");
 
-        // Two topics plush help's own two entries
-        assert_eq!(results.len(), 4);
-    }
-
-    #[test]
-    fn the_word_plugin_lists_plugins_rather_than_entries() {
-        let mut help = help();
-        let results = help.search("? plugin");
-
+        // Two topics + help's
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].name, "help");
         assert_eq!(results[1].name, "web");

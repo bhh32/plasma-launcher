@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use fh_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
-use fh_plugins::{Calculator, DesktopEntries, Files, Find, Help, Settings, Terminal, Topic, Web};
+use fh_plugins::{DesktopEntries, Files, Find, Help, Settings, Terminal, Topic, Web};
 use fh_service::{Plugin, Registry};
 use std::io::{BufRead, Write, stderr, stdin, stdout};
 use tracing::{debug, info, warn};
@@ -14,23 +14,30 @@ fn main() -> Result<()> {
 
     let settings = Settings::load();
 
-    let calculator = Calculator::default();
     let web = Web::new(settings.web);
     let terminal = Terminal::new(settings.terminal);
     let files = Files::default();
     let find = Find::new(settings.find);
     let desktop = DesktopEntries::load();
-    let help = Help::new(vec![
-        Topic::of(&calculator),
+    let manifests = fh_manifest::discover();
+    let mut topics = vec![
         Topic::of(&web),
         Topic::of(&terminal),
         Topic::of(&files),
         Topic::of(&find),
         Topic::of(&desktop),
-    ]);
+    ];
+
+    // Add the user plugins to the help topics
+    topics.extend(
+        manifests
+            .iter()
+            .map(|manifest| Topic::new(manifest.name.clone(), manifest.usage.clone())),
+    );
+
+    let help = Help::new(topics);
 
     let plugins: Vec<Box<dyn Plugin>> = vec![
-        Box::new(calculator),
         Box::new(web),
         Box::new(terminal),
         Box::new(help),
