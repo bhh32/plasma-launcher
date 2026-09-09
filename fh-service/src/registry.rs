@@ -205,7 +205,7 @@ impl Registry {
     // Activation has no Finished marker, takes whatever the plugin
     // says within the deadline.
     fn drain(&mut self, index: usize) -> Vec<PluginResponse> {
-        let deadline = Instant::now();
+        let deadline = Instant::now() + DEADLINE;
         let mut responses = Vec::new();
 
         loop {
