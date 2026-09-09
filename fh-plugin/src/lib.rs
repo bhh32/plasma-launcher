@@ -1,3 +1,5 @@
+mod spawn;
+
 use fh_ipc::{
     ContextOption, Indice, PluginResponse, PluginSearchResult, Request, decode_line, encode_line,
 };
@@ -9,6 +11,9 @@ use std::{
     path::PathBuf,
 };
 use tracing::warn;
+
+// Re-exports
+pub use spawn::detached;
 
 pub trait Source {
     const NAME: &'static str;
@@ -219,7 +224,7 @@ mod tests {
     fn complete_emits_a_fill_only_when_there_is_one() {
         assert_eq!(
             exchange("{\"Complete\":0}\n"),
-            vec!["{\"Fill\":\"completed\"}"]
+            vec!["{\"Fill\":\"completed\"}", "\"Finished\""]
         )
     }
 
@@ -227,9 +232,10 @@ mod tests {
     fn context_carries_the_id_it_was_asked_about() {
         let lines = exchange("{\"Context\":7}\n");
 
-        assert_eq!(lines.len(), 1);
+        assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("\"id\":7"));
         assert!(lines[0].contains("option"));
+        assert_eq!(lines[1], "\"Finished\"");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 // The only place the application name is written. Every path below derives
 // from it, so renaming is this line plus the two [[bin]] entries.
@@ -38,9 +38,22 @@ fn base(variable: &str, fallback: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(fallback))
 }
 
+// Expand ~
+pub fn expand(path: &str) -> PathBuf {
+    let Some(rest) = path.strip_prefix('~') else {
+        return PathBuf::from(path);
+    };
+    let Some(home) = env::var_os("HOME") else {
+        return PathBuf::from(path);
+    };
+    PathBuf::from(home).join(rest.trim_start_matches('/'))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{APP, config_dir, config_home, data_dir, plugin_dirs, state_dir};
+    use std::{env, path::PathBuf};
+
+    use super::{APP, config_dir, config_home, data_dir, expand, plugin_dirs, state_dir};
 
     #[test]
     fn every_directory_ends_in_the_app_name() {
@@ -61,5 +74,17 @@ mod tests {
         assert_eq!(dirs.len(), 2);
         assert!(dirs[0].starts_with(data_dir()));
         assert!(dirs[1].starts_with("/usr/share"));
+    }
+
+    #[test]
+    fn home_expansion() {
+        let home = env::var("HOME").expect("HOME is set");
+
+        assert_eq!(expand("~"), PathBuf::from(&home));
+        assert_eq!(
+            expand("~/Documents"),
+            PathBuf::from(&home).join("Documents")
+        );
+        assert_eq!(expand("/usr/bin").to_str(), Some("/usr/bin"));
     }
 }

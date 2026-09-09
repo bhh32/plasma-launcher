@@ -86,10 +86,11 @@ impl Registry {
         for index in 0..self.processes.len() {
             let wanted = match isolating_process {
                 Some(only) => isolating_builtin.is_none() && only == index,
-                None => !isolating && self.processes[index].accepts(query),
+                None => !isolating,
             };
 
-            if wanted && self.processes[index].search(query) {
+            if wanted && self.processes[index].accepts(query) && self.processes[index].search(query)
+            {
                 pending += 1;
             }
         }

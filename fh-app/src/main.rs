@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use fh_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
-use fh_plugins::{DesktopEntries, Files, Find, Help, Settings, Topic, Web};
+use fh_plugins::{DesktopEntries, Files, Help, Settings, Topic, Web};
 use fh_service::{Plugin, Registry};
 use std::io::{BufRead, Write, stderr, stdin, stdout};
 use std::time::SystemTime;
@@ -17,15 +17,9 @@ fn main() -> Result<()> {
 
     let web = Web::new(settings.web);
     let files = Files::default();
-    let find = Find::new(settings.find);
     let desktop = DesktopEntries::load();
     let manifests = fh_manifest::discover();
-    let mut topics = vec![
-        Topic::of(&web),
-        Topic::of(&files),
-        Topic::of(&find),
-        Topic::of(&desktop),
-    ];
+    let mut topics = vec![Topic::of(&web), Topic::of(&files), Topic::of(&desktop)];
 
     // Add the user plugins to the help topics
     topics.extend(
@@ -40,7 +34,6 @@ fn main() -> Result<()> {
         Box::new(web),
         Box::new(help),
         Box::new(files),
-        Box::new(find),
         Box::new(desktop),
     ];
 

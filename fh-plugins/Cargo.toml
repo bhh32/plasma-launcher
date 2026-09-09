@@ -11,7 +11,6 @@ fh-ipc.workspace = true
 fh-paths.workspace = true
 fh-service.workspace = true
 freedesktop-desktop-entry.workspace = true
-ignore.workspace = true
 nucleo-matcher.workspace = true
 serde.workspace = true
 thiserror.workspace = true
