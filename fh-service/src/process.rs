@@ -52,6 +52,13 @@ impl ProcessPlugin {
 
     // False: plugin could not be reached after a restart and caller should not count
     // it as pending
+    // Routing is the launcher's business, so the prefix that selected this
+    // plugin is removed before the query reaches it.
+    pub fn search(&mut self, query: &str) -> bool {
+        let query = self.trigger.strip(query).to_owned();
+        self.send(&Request::Search(query))
+    }
+
     pub fn send(&mut self, request: &Request) -> bool {
         if self.stdin.is_none() && !self.start() {
             return false;

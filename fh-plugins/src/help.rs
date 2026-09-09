@@ -189,8 +189,7 @@ mod tests {
     #[test]
     fn a_plugin_row_drills_into_that_plugin() {
         let mut help = help();
-        help.search("? plugin");
-
+        help.search("?");
         assert_eq!(help.activate(1), vec![PluginResponse::Fill("? web".into())])
     }
 

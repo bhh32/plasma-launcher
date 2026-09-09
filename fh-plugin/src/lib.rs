@@ -1,9 +1,38 @@
 use fh_ipc::{
     ContextOption, Indice, PluginResponse, PluginSearchResult, Request, decode_line, encode_line,
 };
-use std::io::{self, BufRead, Write};
+use fh_paths::config_dir;
+use serde::de::DeserializeOwned;
+use std::{
+    fs,
+    io::{self, BufRead, Write},
+    path::PathBuf,
+};
+use tracing::warn;
 
 pub trait Source {
+    const NAME: &'static str;
+    type Settings: DeserializeOwned + Default;
+
+    fn config_path() -> PathBuf {
+        config_dir()
+            .join("plugins")
+            .join(format!("{}.toml", Self::NAME))
+    }
+    fn config() -> Self::Settings {
+        let path = Self::config_path();
+        let Ok(text) = fs::read_to_string(&path) else {
+            return <Self::Settings>::default();
+        };
+
+        match toml::from_str(&text) {
+            Ok(settings) => settings,
+            Err(e) => {
+                warn!(%e, path = %path.display(), "plugin settings are unreadable, using defaults");
+                <Self::Settings>::default()
+            }
+        }
+    }
     fn search(&mut self, query: &str) -> Vec<PluginSearchResult>;
     fn activate(&mut self, id: Indice) -> Vec<PluginResponse>;
     fn complete(&mut self, _id: Indice) -> Option<String> {
@@ -93,7 +122,13 @@ fn emit<W: Write>(writer: &mut W, response: &PluginResponse) -> io::Result<()> {
 mod tests {
     use super::{Source, serve};
     use fh_ipc::{ContextOption, IconSource, Indice, PluginResponse, PluginSearchResult};
+    use serde::Deserialize;
     use std::io::Cursor;
+
+    #[derive(Default, Deserialize, PartialEq, Debug)]
+    struct Settings {
+        value: u32,
+    }
 
     #[derive(Default)]
     struct Fake {
@@ -115,6 +150,9 @@ mod tests {
     }
 
     impl Source for Fake {
+        const NAME: &'static str = "fake";
+        type Settings = Settings;
+
         fn search(&mut self, query: &str) -> Vec<PluginSearchResult> {
             if query == "none" {
                 return Vec::new();
@@ -202,5 +240,16 @@ mod tests {
     #[test]
     fn interrupt_produces_no_output() {
         assert!(exchange("\"Interrupt\"\n").is_empty());
+    }
+
+    #[test]
+    fn config_path_named_after_plugin() {
+        let path = Fake::config_path().ends_with("plugins/fake.toml");
+        assert!(path);
+    }
+
+    #[test]
+    fn config_missing_is_defaults() {
+        assert_eq!(Fake::config(), Settings::default());
     }
 }

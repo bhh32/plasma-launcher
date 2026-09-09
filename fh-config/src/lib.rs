@@ -59,10 +59,6 @@ const TEMPLATE: &str = r##"# foothold configuration
 # rs = "https://docs.rs/{}"
 # crate = "https://crates.io/crate/{}"
 # w = "https://en.wikipedia.org/w/index.php?search={}"
-
-#[plugins.terminal]
-# prefix = "t"           # string, the word that triggers this plugin
-# command = ""           # string, empty means $TERMINAL then konsole
 "##;
 
 #[derive(Debug, Error)]

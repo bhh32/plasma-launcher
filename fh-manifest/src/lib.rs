@@ -35,6 +35,68 @@ struct Query {
     always: bool,
 }
 
+impl From<Query> for Trigger {
+    fn from(query: Query) -> Self {
+        Self {
+            prefixes: query.prefixes,
+            starts_with: query.starts_with,
+            digits: query.digits,
+            isolate: query.isolate,
+            always: query.always,
+        }
+    }
+}
+
+// The [plugins] table of the launcher's own config, where a user retargets a
+// plugin without write access to an installed manifest. Every field is
+// optional so an override changes only what it names; adding a prefix leaves
+// the manifest's starts_with and digits alone.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+struct Override {
+    prefixes: Option<Vec<String>>,
+    starts_with: Option<Vec<char>>,
+    digits: Option<bool>,
+    isolate: Option<Vec<String>>,
+    always: Option<bool>,
+}
+
+impl Override {
+    // A section naming no trigger field is not an override. The launcher
+    // config also carries plugin settings such as [plugins.web.keywords].
+    fn is_empty(&self) -> bool {
+        self.prefixes.is_none()
+            && self.starts_with.is_none()
+            && self.digits.is_none()
+            && self.isolate.is_none()
+            && self.always.is_none()
+    }
+
+    fn apply(self, trigger: &mut Trigger) {
+        if let Some(prefixes) = self.prefixes {
+            trigger.prefixes = prefixes;
+        }
+        if let Some(starts_with) = self.starts_with {
+            trigger.starts_with = starts_with;
+        }
+        if let Some(digits) = self.digits {
+            trigger.digits = digits;
+        }
+        if let Some(isolate) = self.isolate {
+            trigger.isolate = isolate;
+        }
+        if let Some(always) = self.always {
+            trigger.always = always;
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct Overrides {
+    plugins: BTreeMap<String, Override>,
+}
+
 #[derive(Debug, Deserialize)]
 struct UsageEntry {
     #[serde(default)]
@@ -80,7 +142,38 @@ pub fn discover() -> Vec<Manifest> {
             }
         }
     }
+
+    let mut overrides = overrides();
+    for manifest in found.values_mut() {
+        if let Some(over) = overrides.remove(&manifest.name) {
+            over.apply(&mut manifest.trigger);
+        }
+    }
     found.into_values().collect()
+}
+
+// The file a user edits to retarget a plugin. Exposed so the launcher can
+// watch it and re-register when it moves.
+pub fn config_path() -> PathBuf {
+    fh_paths::config_dir().join("config.toml")
+}
+
+fn overrides() -> BTreeMap<String, Override> {
+    let path = config_path();
+    let Ok(text) = fs::read_to_string(&path) else {
+        return BTreeMap::new();
+    };
+    match toml::from_str::<Overrides>(&text) {
+        Ok(o) => o
+            .plugins
+            .into_iter()
+            .filter(|(_, over)| !over.is_empty())
+            .collect(),
+        Err(e) => {
+            warn!(%e, path = %path.display(), "could not parse plugin overrides");
+            BTreeMap::new()
+        }
+    }
 }
 
 fn read(dir: &Path) -> Option<Manifest> {
@@ -120,13 +213,7 @@ fn read(dir: &Path) -> Option<Manifest> {
         description: file.description,
         icon: file.icon,
         command,
-        trigger: Trigger {
-            prefixes: file.query.prefixes,
-            starts_with: file.query.starts_with,
-            digits: file.query.digits,
-            isolate: file.query.isolate,
-            always: file.query.always,
-        },
+        trigger: file.query.into(),
         usage: file
             .usage
             .into_iter()
@@ -141,7 +228,8 @@ fn read(dir: &Path) -> Option<Manifest> {
 
 #[cfg(test)]
 mod tests {
-    use super::{File, Query};
+    use super::{File, Override, Overrides, Query};
+    use fh_service::Trigger;
 
     #[test]
     fn a_min_manifest_parses() {
@@ -226,5 +314,61 @@ mod tests {
     #[test]
     fn default_query_accepts_nothing() {
         assert!(!Query::default().always);
+    }
+
+    #[test]
+    fn an_override_changes_only_what_it_names() {
+        let o: Overrides = toml::from_str(
+            r#"
+            [plugins.calculator]
+            prefixes = ["calc"]
+            "#,
+        )
+        .expect("parses");
+
+        // The manifest's trigger, as the calculator ships it
+        let mut trigger = Trigger {
+            starts_with: vec!['=', '(', '-', '.'],
+            digits: true,
+            isolate: vec!["=".to_owned()],
+            ..Trigger::default()
+        };
+        o.plugins["calculator"].clone().apply(&mut trigger);
+
+        // The new prefix works and the original triggers still do
+        assert!(trigger.accepts("calc 36*3"));
+        assert!(trigger.accepts("36*3"));
+        assert!(trigger.accepts("= 2+2"));
+        assert!(trigger.isolates("= 2+2"));
+    }
+
+    #[test]
+    fn a_named_field_replaces_rather_than_appends() {
+        let over = Override {
+            digits: Some(false),
+            ..Override::default()
+        };
+        let mut trigger = Trigger {
+            digits: true,
+            ..Trigger::default()
+        };
+        over.apply(&mut trigger);
+
+        assert!(!trigger.digits);
+    }
+
+    #[test]
+    fn plugin_settings_are_not_an_override() {
+        // The launcher config carries these too; they name no trigger, so
+        // they must not wipe what the manifest declared
+        let o: Overrides = toml::from_str(
+            r#"
+            [plugins.web.keywords]
+            g = "https://google.com/search?q={}"
+            "#,
+        )
+        .expect("parses");
+
+        assert!(o.plugins["web"].is_empty());
     }
 }

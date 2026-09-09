@@ -7,4 +7,8 @@ license.workspace = true
 
 [dependencies]
 fh-ipc.workspace = true
+fh-paths.workspace = true
+toml.workspace = true
+tracing.workspace = true
 tracing-subscriber.workspace = true
+serde.workspace = true

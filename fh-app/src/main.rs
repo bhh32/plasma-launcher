@@ -1,8 +1,9 @@
 use color_eyre::Result;
 use fh_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
-use fh_plugins::{DesktopEntries, Files, Find, Help, Settings, Terminal, Topic, Web};
+use fh_plugins::{DesktopEntries, Files, Find, Help, Settings, Topic, Web};
 use fh_service::{Plugin, Registry};
 use std::io::{BufRead, Write, stderr, stdin, stdout};
+use std::time::SystemTime;
 use tracing::{debug, info, warn};
 
 fn main() -> Result<()> {
@@ -15,14 +16,12 @@ fn main() -> Result<()> {
     let settings = Settings::load();
 
     let web = Web::new(settings.web);
-    let terminal = Terminal::new(settings.terminal);
     let files = Files::default();
     let find = Find::new(settings.find);
     let desktop = DesktopEntries::load();
     let manifests = fh_manifest::discover();
     let mut topics = vec![
         Topic::of(&web),
-        Topic::of(&terminal),
         Topic::of(&files),
         Topic::of(&find),
         Topic::of(&desktop),
@@ -39,7 +38,6 @@ fn main() -> Result<()> {
 
     let plugins: Vec<Box<dyn Plugin>> = vec![
         Box::new(web),
-        Box::new(terminal),
         Box::new(help),
         Box::new(files),
         Box::new(find),
@@ -47,10 +45,8 @@ fn main() -> Result<()> {
     ];
 
     let mut registry = Registry::new(plugins);
-    for manifest in fh_manifest::discover() {
-        info!(plugin = %manifest.name, "registered plugin");
-        registry.add_process(manifest.name, manifest.command, manifest.trigger);
-    }
+    let mut stamp = config_stamp();
+    register_plugins(&mut registry);
     let mut stdout = stdout().lock();
 
     for line in stdin().lock().lines() {
@@ -66,6 +62,14 @@ fn main() -> Result<()> {
 
         match request {
             Request::Search(query) => {
+                // Trigger overrides live in the launcher's config, so an edit
+                // takes effect on the next keystroke rather than a restart
+                let current = config_stamp();
+                if current != stamp {
+                    stamp = current;
+                    registry.clear_processes();
+                    register_plugins(&mut registry);
+                }
                 let results = registry.search(&query);
                 respond(&mut stdout, &Response::Update(results))?;
             }
@@ -111,6 +115,19 @@ fn forward<W: Write>(out: &mut W, response: PluginResponse) -> Result<()> {
     };
 
     respond(out, &response)
+}
+
+fn register_plugins(registry: &mut Registry) {
+    for manifest in fh_manifest::discover() {
+        info!(plugin = %manifest.name, "registered plugin");
+        registry.add_process(manifest.name, manifest.command, manifest.trigger);
+    }
+}
+
+fn config_stamp() -> Option<SystemTime> {
+    std::fs::metadata(fh_manifest::config_path())
+        .and_then(|meta| meta.modified())
+        .ok()
 }
 
 fn respond<W: Write>(out: &mut W, response: &Response) -> Result<()> {

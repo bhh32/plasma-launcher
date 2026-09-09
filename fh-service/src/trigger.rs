@@ -24,6 +24,21 @@ impl Trigger {
         self.isolate.iter().any(|token| query.starts_with(token))
     }
 
+    // A prefix is routing, not content, so the plugin is sent what follows
+    // it. Anything matched by starts_with, digits or always is content and
+    // arrives whole.
+    pub fn strip<'a>(&self, query: &'a str) -> &'a str {
+        let trimmed = query.trim_start();
+        let Some((first, rest)) = trimmed.split_once(char::is_whitespace) else {
+            return query;
+        };
+        if self.prefixes.iter().any(|prefix| prefix == first) {
+            rest.trim_start()
+        } else {
+            query
+        }
+    }
+
     fn matches_prefix(&self, query: &str) -> bool {
         let Some((first, rest)) = query.split_once(char::is_whitespace) else {
             return false;
@@ -105,5 +120,23 @@ mod tests {
 
         assert!(!trigger.accepts("anything"));
         assert!(!trigger.isolates("anything"));
+    }
+
+    #[test]
+    fn a_matched_prefix_is_stripped() {
+        assert_eq!(find().strip("find report.odt"), "report.odt");
+        assert_eq!(find().strip("find  a b"), "a b");
+    }
+
+    #[test]
+    fn content_arrives_whole() {
+        // The calculator matches on a leading character, so nothing is routing
+        assert_eq!(calculator().strip("36 * 3"), "36 * 3");
+        assert_eq!(calculator().strip("= 2+2"), "= 2+2");
+    }
+
+    #[test]
+    fn an_unmatched_first_word_is_left_alone() {
+        assert_eq!(find().strip("finder report"), "finder report");
     }
 }

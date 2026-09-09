@@ -1,4 +1,4 @@
-use crate::{find, terminal, web};
+use crate::{find, web};
 use fh_config::Config;
 use serde::Deserialize;
 use std::fs;
@@ -8,7 +8,6 @@ use tracing::warn;
 #[serde(default)]
 pub struct Settings {
     pub web: web::Settings,
-    pub terminal: terminal::Settings,
     pub find: find::Settings,
 }
 
@@ -43,15 +42,14 @@ mod tests {
     #[test]
     fn an_absent_section_gives_built_in_defaults() {
         let doc: Document = toml::from_str("").expect("parses");
-
-        assert_eq!(doc.plugins.terminal.prefix, "t");
+        assert_eq!(doc.plugins.find.prefix, "find");
         assert!(doc.plugins.web.keywords.contains_key("g"));
     }
 
     #[test]
     fn appearance_keys_are_ignored_here() {
         let doc: Document = toml::from_str("[appearance]\ncard_width = 720").expect("parses");
-        assert_eq!(doc.plugins.terminal.prefix, "t");
+        assert_eq!(doc.plugins.find.prefix, "find");
     }
 
     #[test]

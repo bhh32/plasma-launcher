@@ -46,6 +46,12 @@ impl Registry {
         }
     }
 
+    // Dropping a ProcessPlugin stops its child, so this ends everything
+    // currently running before the caller re-registers.
+    pub fn clear_processes(&mut self) {
+        self.processes.clear();
+    }
+
     pub fn add_process(&mut self, name: String, command: PathBuf, trigger: Trigger) {
         let index = self.processes.len();
 
@@ -83,7 +89,7 @@ impl Registry {
                 None => !isolating && self.processes[index].accepts(query),
             };
 
-            if wanted && self.processes[index].send(&Request::Search(query.to_owned())) {
+            if wanted && self.processes[index].search(query) {
                 pending += 1;
             }
         }
