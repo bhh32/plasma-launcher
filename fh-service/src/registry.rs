@@ -215,6 +215,7 @@ impl Registry {
             }
 
             match self.responses.recv_timeout(remaining) {
+                Ok((from, PluginResponse::Finished)) if from == index => break,
                 Ok((from, response)) if from == index => responses.push(response),
                 Ok(_) => {}
                 Err(_) => break,

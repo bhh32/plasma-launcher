@@ -71,16 +71,11 @@ pub fn serve<S: Source, R: BufRead, W: Write>(mut source: S, reader: R, mut writ
             continue;
         };
         let responses = match request {
-            Request::Search(query) => {
-                let found = source.search(&query);
-                let mut responses: Vec<PluginResponse> =
-                    found.into_iter().map(PluginResponse::Append).collect();
-
-                // Finished is what lets the launcher stop waiting on this
-                // plugin before its deadline expires
-                responses.push(PluginResponse::Finished);
-                responses
-            }
+            Request::Search(query) => source
+                .search(&query)
+                .into_iter()
+                .map(PluginResponse::Append)
+                .collect(),
             Request::Activate(id) => source.activate(id),
             Request::Complete(id) => source
                 .complete(id)
@@ -99,13 +94,13 @@ pub fn serve<S: Source, R: BufRead, W: Write>(mut source: S, reader: R, mut writ
             Request::Quit(id) => source.quit(id),
             Request::Interrupt => {
                 source.interrupt();
-                Vec::new()
+                continue;
             }
             Request::Exit => return,
         };
 
-        for response in responses {
-            if emit(&mut writer, &response).is_err() {
+        for response in responses.iter().chain([&PluginResponse::Finished]) {
+            if emit(&mut writer, response).is_err() {
                 return;
             }
         }
@@ -251,5 +246,13 @@ mod tests {
     #[test]
     fn config_missing_is_defaults() {
         assert_eq!(Fake::config(), Settings::default());
+    }
+
+    #[test]
+    fn activation_ends_when_finished() {
+        assert_eq!(
+            exchange("{\"Activate\":0}\n"),
+            vec!["\"Close\"", "\"Finished\""]
+        );
     }
 }
