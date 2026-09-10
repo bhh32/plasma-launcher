@@ -9,11 +9,22 @@ use std::{
     fs,
     io::{self, BufRead, Write},
     path::PathBuf,
+    sync::mpsc::{Sender, channel},
+    thread,
 };
 use tracing::warn;
 
 // Re-exports
 pub use spawn::detached;
+
+#[derive(Clone)]
+pub struct Waker(Sender<PluginResponse>);
+
+impl Waker {
+    pub fn wake(&self) {
+        let _ = self.0.send(PluginResponse::Refresh);
+    }
+}
 
 pub trait Source {
     const NAME: &'static str;
@@ -38,6 +49,7 @@ pub trait Source {
             }
         }
     }
+    fn connect(&mut self, _waker: Waker) {}
     fn search(&mut self, query: &str) -> Vec<PluginSearchResult>;
     fn activate(&mut self, id: Indice) -> Vec<PluginResponse>;
     fn complete(&mut self, _id: Indice) -> Option<String> {
@@ -64,13 +76,28 @@ pub fn run<S: Source>(source: S) {
     let stdin = io::stdin();
     let stdout = io::stdout();
 
-    serve(source, stdin.lock(), stdout.lock());
+    serve(source, stdin.lock(), stdout);
 }
 
-pub fn serve<S: Source, R: BufRead, W: Write>(mut source: S, reader: R, mut writer: W) {
+pub fn serve<S: Source, R: BufRead, W: Write + Send + 'static>(
+    mut source: S,
+    reader: R,
+    mut writer: W,
+) -> W {
+    let (out, outgoing) = channel::<PluginResponse>();
+    let pump = thread::spawn(move || {
+        for response in outgoing {
+            if emit(&mut writer, &response).is_err() {
+                break;
+            }
+        }
+        writer
+    });
+
+    source.connect(Waker(out.clone()));
     for line in reader.lines() {
         let Ok(line) = line else {
-            return;
+            break;
         };
         let Ok(request) = decode_line::<Request>(&line) else {
             continue;
@@ -101,15 +128,22 @@ pub fn serve<S: Source, R: BufRead, W: Write>(mut source: S, reader: R, mut writ
                 source.interrupt();
                 continue;
             }
-            Request::Exit => return,
+            Request::Exit => break,
         };
 
         for response in responses.iter().chain([&PluginResponse::Finished]) {
-            if emit(&mut writer, response).is_err() {
-                return;
+            if out.send(response.clone()).is_err() {
+                break;
             }
         }
     }
+
+    // The pump ends whent he last Sender drops
+    drop(source);
+    drop(out);
+
+    pump.join()
+        .unwrap_or_else(|_| panic!("the writer thread panicked"))
 }
 
 fn emit<W: Write>(writer: &mut W, response: &PluginResponse) -> io::Result<()> {
@@ -181,11 +215,10 @@ mod tests {
     }
 
     fn exchange(input: &str) -> Vec<String> {
-        let mut output = Vec::new();
-        serve(Fake::default(), Cursor::new(input.to_owned()), &mut output);
+        let output = serve(Fake::default(), Cursor::new(input.to_owned()), Vec::new());
 
         String::from_utf8(output)
-            .expect("output is utf8")
+            .expect("output it utf8")
             .lines()
             .map(str::to_owned)
             .collect()

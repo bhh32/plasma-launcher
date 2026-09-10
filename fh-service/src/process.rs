@@ -15,6 +15,7 @@ pub struct ProcessPlugin {
     command: PathBuf,
     trigger: Trigger,
     sender: Sender<(usize, PluginResponse)>,
+    wake: Sender<()>,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
 }
@@ -26,6 +27,7 @@ impl ProcessPlugin {
         command: PathBuf,
         trigger: Trigger,
         sender: Sender<(usize, PluginResponse)>,
+        wake: Sender<()>,
     ) -> Self {
         Self {
             index,
@@ -33,6 +35,7 @@ impl ProcessPlugin {
             command,
             trigger,
             sender,
+            wake,
             child: None,
             stdin: None,
         }
@@ -106,6 +109,7 @@ impl ProcessPlugin {
             return false;
         };
         let sender = self.sender.clone();
+        let wake = self.wake.clone();
         let index = self.index;
 
         thread::spawn(move || {
@@ -116,7 +120,12 @@ impl ProcessPlugin {
                 let Ok(response) = decode_line::<PluginResponse>(&line) else {
                     continue;
                 };
-
+                if response == PluginResponse::Refresh {
+                    if wake.send(()).is_err() {
+                        break;
+                    }
+                    continue;
+                }
                 if sender.send((index, response)).is_err() {
                     break;
                 }

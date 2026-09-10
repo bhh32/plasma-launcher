@@ -30,11 +30,12 @@ pub struct Registry {
     processes: Vec<ProcessPlugin>,
     responses: Receiver<(usize, PluginResponse)>,
     sender: Sender<(usize, PluginResponse)>,
+    wake: Sender<()>,
     selections: Vec<Selection>,
 }
 
 impl Registry {
-    pub fn new(builtin: Vec<Box<dyn Plugin>>) -> Self {
+    pub fn new(builtin: Vec<Box<dyn Plugin>>, wake: Sender<()>) -> Self {
         let (sender, responses) = channel();
 
         Self {
@@ -42,6 +43,7 @@ impl Registry {
             processes: Vec::new(),
             responses,
             sender,
+            wake,
             selections: Vec::new(),
         }
     }
@@ -61,6 +63,7 @@ impl Registry {
             command,
             trigger,
             self.sender.clone(),
+            self.wake.clone(),
         ));
     }
 
@@ -231,6 +234,7 @@ mod tests {
 
     use super::{super::Plugin, Registry};
     use fh_ipc::{Indice, PluginResponse, PluginSearchResult};
+    use std::sync::mpsc::channel;
 
     struct Fake {
         name: &'static str,
@@ -271,18 +275,22 @@ mod tests {
     }
 
     fn registry() -> Registry {
-        Registry::new(vec![
-            Box::new(Fake {
-                name: "calc",
-                isolating: true,
-                count: 1,
-            }),
-            Box::new(Fake {
-                name: "apps",
-                isolating: false,
-                count: 3,
-            }),
-        ])
+        let (wake, _receiver) = channel();
+        Registry::new(
+            vec![
+                Box::new(Fake {
+                    name: "calc",
+                    isolating: true,
+                    count: 1,
+                }),
+                Box::new(Fake {
+                    name: "apps",
+                    isolating: false,
+                    count: 3,
+                }),
+            ],
+            wake,
+        )
     }
 
     #[test]

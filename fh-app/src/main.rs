@@ -2,9 +2,19 @@ use color_eyre::Result;
 use fh_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
 use fh_plugins::{DesktopEntries, Files, Help, Settings, Topic, Web};
 use fh_service::{Plugin, Registry};
-use std::io::{BufRead, Write, stderr, stdin, stdout};
-use std::time::SystemTime;
+use std::{
+    io::{BufRead, Write, stderr, stdin, stdout},
+    sync::mpsc::channel,
+    thread,
+    time::SystemTime,
+};
 use tracing::{debug, info, warn};
+
+enum Event {
+    Line(String),
+    Wake,
+    Eof,
+}
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -37,13 +47,54 @@ fn main() -> Result<()> {
         Box::new(desktop),
     ];
 
-    let mut registry = Registry::new(plugins);
+    let (events, incoming) = channel();
+    let (wake, wakes) = channel();
+
+    // Reading stdin blocks off the main loop
+    {
+        let events = events.clone();
+
+        thread::spawn(move || {
+            for line in stdin().lock().lines() {
+                let Ok(line) = line else {
+                    break;
+                };
+                if events.send(Event::Line(line)).is_err() {
+                    return;
+                }
+            }
+            let _ = events.send(Event::Eof);
+        });
+    }
+
+    thread::spawn(move || {
+        while wakes.recv().is_ok() {
+            if events.send(Event::Wake).is_err() {
+                return;
+            }
+        }
+    });
+
+    let mut registry = Registry::new(plugins, wake);
     let mut stamp = config_stamp();
     register_plugins(&mut registry);
     let mut stdout = stdout().lock();
+    let mut last = String::new();
 
-    for line in stdin().lock().lines() {
-        let line = line?;
+    for event in incoming {
+        let line = match event {
+            Event::Line(line) => line,
+            Event::Eof => break,
+            Event::Wake => {
+                if last.is_empty() {
+                    continue;
+                }
+                let results = registry.search(&last);
+                respond(&mut stdout, &Response::Update(results))?;
+                continue;
+            }
+        };
+
         let request = match decode_line::<Request>(&line) {
             Ok(request) => request,
             Err(IpcError::Empty) => continue,
@@ -64,6 +115,7 @@ fn main() -> Result<()> {
                     register_plugins(&mut registry);
                 }
                 let results = registry.search(&query);
+                last = query;
                 respond(&mut stdout, &Response::Update(results))?;
             }
             Request::Activate(id) => {

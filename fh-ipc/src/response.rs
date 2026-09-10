@@ -31,6 +31,7 @@ pub enum PluginResponse {
         gpu_preference: GpuPreference,
     },
     Fill(String),
+    Refresh,
     Finished,
 }
 
