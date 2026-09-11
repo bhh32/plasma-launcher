@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 fh-config.workspace = true
 fh-ipc.workspace = true
+fh-manifest.workspace = true
 fh-paths.workspace = true
 fh-service.workspace = true
 freedesktop-desktop-entry.workspace = true

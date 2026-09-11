@@ -1,9 +1,11 @@
+use fh_paths::plugin_dirs;
 use fh_service::{Trigger, Usage};
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 use tracing::warn;
 
@@ -156,6 +158,26 @@ pub fn discover() -> Vec<Manifest> {
 // watch it and re-register when it moves.
 pub fn config_path() -> PathBuf {
     fh_paths::config_dir().join("config.toml")
+}
+
+pub fn stamp() -> Option<SystemTime> {
+    let mut newest = modified(&config_path());
+    plugin_dirs().iter().for_each(|dir| {
+        // A plugin added or removed changes the directory it lives in
+        newest = newest.max(modified(dir));
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+
+        entries.filter_map(Result::ok).for_each(|entry| {
+            newest = newest.max(modified(&entry.path()));
+        });
+    });
+    newest
+}
+
+fn modified(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).and_then(|meta| meta.modified()).ok()
 }
 
 fn overrides() -> BTreeMap<String, Override> {

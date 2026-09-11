@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use fh_ipc::{Error as IpcError, PluginResponse, Request, Response, decode_line, encode_line};
+use fh_manifest::stamp;
 use fh_plugins::{DesktopEntries, Files, Help, Settings, Topic, Web};
 use fh_service::{Plugin, Registry};
 use std::{
@@ -28,16 +29,7 @@ fn main() -> Result<()> {
     let web = Web::new(settings.web);
     let files = Files::default();
     let desktop = DesktopEntries::load();
-    let manifests = fh_manifest::discover();
-    let mut topics = vec![Topic::of(&web), Topic::of(&files), Topic::of(&desktop)];
-
-    // Add the user plugins to the help topics
-    topics.extend(
-        manifests
-            .iter()
-            .map(|manifest| Topic::new(manifest.name.clone(), manifest.usage.clone())),
-    );
-
+    let topics = vec![Topic::of(&web), Topic::of(&files), Topic::of(&desktop)];
     let help = Help::new(topics);
 
     let plugins: Vec<Box<dyn Plugin>> = vec![
@@ -76,7 +68,7 @@ fn main() -> Result<()> {
     });
 
     let mut registry = Registry::new(plugins, wake);
-    let mut stamp = config_stamp();
+    let mut cur_stamp = stamp().unwrap_or_else(SystemTime::now);
     register_plugins(&mut registry);
     let mut stdout = stdout().lock();
     let mut last = String::new();
@@ -108,9 +100,9 @@ fn main() -> Result<()> {
             Request::Search(query) => {
                 // Trigger overrides live in the launcher's config, so an edit
                 // takes effect on the next keystroke rather than a restart
-                let current = config_stamp();
-                if current != stamp {
-                    stamp = current;
+                let current = stamp().unwrap_or_else(SystemTime::now);
+                if current != cur_stamp {
+                    cur_stamp = current;
                     registry.clear_processes();
                     register_plugins(&mut registry);
                 }
@@ -167,12 +159,6 @@ fn register_plugins(registry: &mut Registry) {
         info!(plugin = %manifest.name, "registered plugin");
         registry.add_process(manifest.name, manifest.command, manifest.trigger);
     }
-}
-
-fn config_stamp() -> Option<SystemTime> {
-    std::fs::metadata(fh_manifest::config_path())
-        .and_then(|meta| meta.modified())
-        .ok()
 }
 
 fn respond<W: Write>(out: &mut W, response: &Response) -> Result<()> {

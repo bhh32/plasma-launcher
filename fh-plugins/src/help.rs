@@ -1,6 +1,8 @@
 use fh_ipc::{IconSource, Indice, PluginResponse, PluginSearchResult};
+use fh_manifest::discover;
 use fh_service::{Plugin, Usage};
 
+#[derive(Clone)]
 pub struct Topic {
     plugin: String,
     entries: Vec<Usage>,
@@ -20,35 +22,42 @@ impl Topic {
 }
 
 pub struct Help {
-    topics: Vec<Topic>,
+    builtin: Vec<Topic>,
+    discover: fn() -> Vec<Topic>,
     outcome: Vec<String>,
 }
 
 impl Help {
-    pub fn new(topics: Vec<Topic>) -> Self {
-        let mut topics = topics;
+    pub fn new(builtin: Vec<Topic>) -> Self {
+        Self::with(builtin, manifest_topics)
+    }
 
-        topics.insert(
-            0,
-            Topic {
-                plugin: "help".into(),
-                entries: vec![Usage {
-                    prefix: "?".into(),
-                    example: "? web".into(),
-                    description: "Help for one plugin".into(),
-                }],
-            },
-        );
-
+    fn with(builtin: Vec<Topic>, discover: fn() -> Vec<Topic>) -> Self {
         Self {
-            topics,
+            builtin,
+            discover,
             outcome: Vec::new(),
         }
     }
 
+    fn topics(&self) -> Vec<Topic> {
+        let mut topics = vec![Topic {
+            plugin: "help".into(),
+            entries: vec![Usage {
+                prefix: "?".into(),
+                example: "? web".into(),
+                description: "Help for one plugin".into(),
+            }],
+        }];
+
+        topics.extend(self.builtin.iter().cloned());
+        topics.extend((self.discover)());
+        topics
+    }
+
     // One row per plugin, described by the prefixes it answers to
     fn plugins(&self) -> Vec<(String, String, String)> {
-        self.topics
+        self.topics()
             .iter()
             .map(|topic| {
                 let prefixes: Vec<&str> = topic
@@ -73,7 +82,7 @@ impl Help {
     }
 
     fn entries(&self, wanted: &str) -> Vec<(String, String, String)> {
-        self.topics
+        self.topics()
             .iter()
             .filter(|topic| topic.plugin.to_lowercase().starts_with(wanted))
             .flat_map(|topic| topic.entries.iter())
@@ -153,6 +162,13 @@ impl Plugin for Help {
     }
 }
 
+fn manifest_topics() -> Vec<Topic> {
+    discover()
+        .into_iter()
+        .map(|manifest| Topic::new(manifest.name, manifest.usage))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Help, Topic};
@@ -171,7 +187,7 @@ mod tests {
     }
 
     fn help() -> Help {
-        Help::new(vec![topic("web", "g"), topic("terminal", "t")])
+        Help::with(vec![topic("web", "g"), topic("terminal", "t")], Vec::new)
     }
 
     #[test]
